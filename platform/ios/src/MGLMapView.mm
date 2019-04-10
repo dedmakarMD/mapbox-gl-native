@@ -1070,22 +1070,30 @@ public:
 
 - (void)setContentInset:(UIEdgeInsets)contentInset animated:(BOOL)animated
 {
+    [self setContentInset:contentInset animated:animated completionHandler:nil];
+}
+
+- (void)setContentInset:(UIEdgeInsets)contentInset animated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
+{
     MGLLogDebug(@"Setting contentInset: %@ animated:", NSStringFromUIEdgeInsets(contentInset), MGLStringFromBOOL(animated));
     if (UIEdgeInsetsEqualToEdgeInsets(contentInset, self.contentInset))
     {
+        if (completion) {
+            completion();
+        }
         return;
     }
 
     if (self.userTrackingMode == MGLUserTrackingModeNone)
     {
         // Don’t call -setCenterCoordinate:, which resets the user tracking mode.
-        [self _setCenterCoordinate:self.centerCoordinate edgePadding:contentInset zoomLevel:self.zoomLevel direction:self.direction duration:animated ? MGLAnimationDuration : 0 animationTimingFunction:nil completionHandler:nil];
+        [self _setCenterCoordinate:self.centerCoordinate edgePadding:contentInset zoomLevel:self.zoomLevel direction:self.direction duration:animated ? MGLAnimationDuration : 0 animationTimingFunction:nil completionHandler:completion];
         _contentInset = contentInset;
     }
     else
     {
         _contentInset = contentInset;
-        [self didUpdateLocationWithUserTrackingAnimated:animated];
+        [self didUpdateLocationWithUserTrackingAnimated:animated completionHandler:completion];
     }
 
     // Compass, logo and attribution button constraints needs to be updated.z
@@ -1987,7 +1995,7 @@ public:
     {
         CGPoint calloutPoint = [singleTap locationInView:self];
         CGRect positionRect = [self positioningRectForAnnotation:annotation defaultCalloutPoint:calloutPoint];
-        [self selectAnnotation:annotation moveIntoView:YES animateSelection:YES calloutPositioningRect:positionRect];
+        [self selectAnnotation:annotation moveIntoView:YES animateSelection:YES calloutPositioningRect:positionRect completionHandler:nil];
     }
     else if (self.selectedAnnotation)
     {
@@ -3439,6 +3447,11 @@ public:
 
 - (void)setVisibleCoordinateBounds:(MGLCoordinateBounds)bounds edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated
 {
+    [self setVisibleCoordinateBounds:bounds edgePadding:insets animated:animated completionHandler:nil];
+}
+
+- (void)setVisibleCoordinateBounds:(MGLCoordinateBounds)bounds edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
+{
     MGLLogDebug(@"Setting visibleCoordinateBounds: %@ edgePadding: %@ animated: %@",
                 MGLStringFromCoordinateBounds(bounds),
                 NSStringFromUIEdgeInsets(insets),
@@ -3452,27 +3465,10 @@ public:
     [self setVisibleCoordinates:coordinates
                           count:sizeof(coordinates) / sizeof(coordinates[0])
                     edgePadding:insets
-                       animated:animated];
-}
-
-- (void)setVisibleCoordinateBounds:(MGLCoordinateBounds)bounds edgePadding:(UIEdgeInsets)insets direction:(CLLocationDirection)direction animated:(BOOL)animated
-{
-    MGLLogDebug(@"Setting visibleCoordinateBounds: %@ edgePadding: %@ direction: %f animated: %@",
-                MGLStringFromCoordinateBounds(bounds),
-                NSStringFromUIEdgeInsets(insets),
-                direction,
-                MGLStringFromBOOL(animated));
-    CLLocationCoordinate2D coordinates[] = {
-        {bounds.ne.latitude, bounds.sw.longitude},
-        bounds.sw,
-        {bounds.sw.latitude, bounds.ne.longitude},
-        bounds.ne,
-    };
-    [self setVisibleCoordinates:coordinates
-                          count:sizeof(coordinates) / sizeof(coordinates[0])
-                    edgePadding:insets
-                      direction:direction
-                       animated:animated];
+                      direction:self.direction
+                       duration:animated ? MGLAnimationDuration : 0
+        animationTimingFunction:nil
+              completionHandler:completion];
 }
 
 - (void)setVisibleCoordinates:(const CLLocationCoordinate2D *)coordinates count:(NSUInteger)count edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated
@@ -3481,17 +3477,7 @@ public:
                 count,
                 NSStringFromUIEdgeInsets(insets),
                 MGLStringFromBOOL(animated));
-    [self setVisibleCoordinates:coordinates count:count edgePadding:insets direction:self.direction animated:animated];
-}
-
-- (void)setVisibleCoordinates:(const CLLocationCoordinate2D *)coordinates count:(NSUInteger)count edgePadding:(UIEdgeInsets)insets direction:(CLLocationDirection)direction animated:(BOOL)animated
-{
-    MGLLogDebug(@"Setting: %lu coordinates edgePadding: %@ direction: %f animated: %@",
-                count,
-                NSStringFromUIEdgeInsets(insets),
-                direction,
-                MGLStringFromBOOL(animated));
-    [self setVisibleCoordinates:coordinates count:count edgePadding:insets direction:direction duration:animated ? MGLAnimationDuration : 0 animationTimingFunction:nil];
+    [self setVisibleCoordinates:coordinates count:count edgePadding:insets direction:self.direction duration:animated ? MGLAnimationDuration : 0 animationTimingFunction:nil];
 }
 
 - (void)setVisibleCoordinates:(const CLLocationCoordinate2D *)coordinates count:(NSUInteger)count edgePadding:(UIEdgeInsets)insets direction:(CLLocationDirection)direction duration:(NSTimeInterval)duration animationTimingFunction:(nullable CAMediaTimingFunction *)function {
@@ -4802,17 +4788,22 @@ public:
 
 - (void)selectAnnotation:(id <MGLAnnotation>)annotation animated:(BOOL)animated
 {
-    [self selectAnnotation:annotation moveIntoView:animated animateSelection:animated];
+    [self selectAnnotation:annotation animated:animated completionHandler:nil];
 }
 
-- (void)selectAnnotation:(id <MGLAnnotation>)annotation moveIntoView:(BOOL)moveIntoView animateSelection:(BOOL)animateSelection
+- (void)selectAnnotation:(id <MGLAnnotation>)annotation animated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
+{
+    [self selectAnnotation:annotation moveIntoView:animated animateSelection:animated completionHandler:completion];
+}
+
+- (void)selectAnnotation:(id <MGLAnnotation>)annotation moveIntoView:(BOOL)moveIntoView animateSelection:(BOOL)animateSelection completionHandler:(nullable void (^)(void))completion
 {
     MGLLogDebug(@"Selecting annotation: %@ moveIntoView: %@ animateSelection: %@", annotation, MGLStringFromBOOL(moveIntoView), MGLStringFromBOOL(animateSelection));
     CGRect positioningRect = [self positioningRectForAnnotation:annotation defaultCalloutPoint:CGPointZero];
-    [self selectAnnotation:annotation moveIntoView:moveIntoView animateSelection:animateSelection calloutPositioningRect:positioningRect];
+    [self selectAnnotation:annotation moveIntoView:moveIntoView animateSelection:animateSelection calloutPositioningRect:positioningRect completionHandler:completion];
 }
 
-- (void)selectAnnotation:(id <MGLAnnotation>)annotation moveIntoView:(BOOL)moveIntoView animateSelection:(BOOL)animateSelection calloutPositioningRect:(CGRect)calloutPositioningRect
+- (void)selectAnnotation:(id <MGLAnnotation>)annotation moveIntoView:(BOOL)moveIntoView animateSelection:(BOOL)animateSelection calloutPositioningRect:(CGRect)calloutPositioningRect completionHandler:(nullable void (^)(void))completion
 {
     if ( ! annotation) return;
 
@@ -5022,7 +5013,11 @@ public:
     {
         CGPoint center = CGPointMake(CGRectGetMidX(constrainedRect), CGRectGetMidY(constrainedRect));
         CLLocationCoordinate2D centerCoord = [self convertPoint:center toCoordinateFromView:self];
-        [self setCenterCoordinate:centerCoord animated:animateSelection];
+        [self setCenterCoordinate:centerCoord zoomLevel:self.zoomLevel direction:self.direction animated:animateSelection completionHandler:completion];
+    }
+    else if (completion)
+    {
+        completion();
     }
 }
 
@@ -5220,8 +5215,19 @@ public:
 
 - (void)showAnnotations:(NSArray<id <MGLAnnotation>> *)annotations edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated
 {
+    [self showAnnotations:annotations edgePadding:insets animated:animated completionHandler:nil];
+}
+
+- (void)showAnnotations:(NSArray<id <MGLAnnotation>> *)annotations edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
+{
     MGLLogDebug(@"Showing: %lu annotations edgePadding: %@ animated: %@", annotations.count, NSStringFromUIEdgeInsets(insets), MGLStringFromBOOL(animated));
-    if ( ! annotations || ! annotations.count) return;
+    if ( ! annotations.count)
+    {
+        if (completion) {
+            completion();
+        }
+        return;
+    }
 
     mbgl::LatLngBounds bounds = mbgl::LatLngBounds::empty();
 
@@ -5239,7 +5245,8 @@ public:
 
     [self setVisibleCoordinateBounds:MGLCoordinateBoundsFromLatLngBounds(bounds)
                          edgePadding:insets
-                            animated:animated];
+                            animated:animated
+                   completionHandler:completion];
 }
 
 
@@ -5448,8 +5455,20 @@ public:
 
 - (void)setUserTrackingMode:(MGLUserTrackingMode)mode animated:(BOOL)animated
 {
+    [self setUserTrackingMode:mode animated:animated completionHandler:nil];
+}
+
+- (void)setUserTrackingMode:(MGLUserTrackingMode)mode animated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
+{
     MGLLogDebug(@"Setting userTrackingMode: %lu animated: %@", mode, MGLStringFromBOOL(animated));
-    if (mode == _userTrackingMode) return;
+    if (mode == _userTrackingMode)
+    {
+        if (completion)
+        {
+            completion();
+        }
+        return;
+    }
 
     MGLUserTrackingMode oldMode = _userTrackingMode;
     [self willChangeValueForKey:@"userTrackingMode"];
@@ -5494,13 +5513,14 @@ public:
         }
     }
 
-    if (_userTrackingMode != MGLUserTrackingModeNone)
+    CLLocation *location;
+    if (_userTrackingMode != MGLUserTrackingModeNone && (location = self.userLocation.location) && self.userLocationAnnotationView)
     {
-        CLLocation *location = self.userLocation.location;
-        if (location && self.userLocationAnnotationView)
-        {
-            [self locationManager:self.locationManager didUpdateLocations:@[location] animated:animated];
-        }
+        [self locationManager:self.locationManager didUpdateLocations:@[location] animated:animated completionHandler:completion];
+    }
+    else if (completion)
+    {
+        completion();
     }
 
     [self validateUserHeadingUpdating];
@@ -5524,7 +5544,7 @@ public:
         CLLocation *location = self.userLocation.location;
         if (location)
         {
-            [self locationManager:self.locationManager didUpdateLocations:@[location] animated:animated];
+            [self locationManager:self.locationManager didUpdateLocations:@[location] animated:animated completionHandler:nil];
         }
     }
 }
@@ -5537,7 +5557,13 @@ public:
 
 - (void)setTargetCoordinate:(CLLocationCoordinate2D)targetCoordinate animated:(BOOL)animated
 {
+    [self setTargetCoordinate:targetCoordinate animated:animated completionHandler:nil];
+}
+
+- (void)setTargetCoordinate:(CLLocationCoordinate2D)targetCoordinate animated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
+{
     MGLLogDebug(@"Setting targetCoordinate: %@ animated: %@", MGLStringFromCLLocationCoordinate2D(targetCoordinate), MGLStringFromBOOL(animated));
+    BOOL isSynchronous = YES;
     if (targetCoordinate.latitude != self.targetCoordinate.latitude
         || targetCoordinate.longitude != self.targetCoordinate.longitude)
     {
@@ -5546,12 +5572,16 @@ public:
         {
             self.userTrackingState = MGLUserTrackingStatePossible;
 
-            CLLocation *location = self.userLocation.location;
-            if (location)
+            if (CLLocation *location = self.userLocation.location)
             {
-                [self locationManager:self.locationManager didUpdateLocations:@[location] animated:animated];
+                isSynchronous = NO;
+                [self locationManager:self.locationManager didUpdateLocations:@[location] animated:animated completionHandler:completion];
             }
         }
+    }
+    if (isSynchronous && completion)
+    {
+        completion();
     }
 }
 
@@ -5584,10 +5614,10 @@ public:
 
 - (void)locationManager:(id<MGLLocationManager>)manager didUpdateLocations:(NSArray *)locations
 {
-    [self locationManager:manager didUpdateLocations:locations animated:YES];
+    [self locationManager:manager didUpdateLocations:locations animated:YES completionHandler:nil];
 }
 
-- (void)locationManager:(__unused id<MGLLocationManager>)manager didUpdateLocations:(NSArray *)locations animated:(BOOL)animated
+- (void)locationManager:(__unused id<MGLLocationManager>)manager didUpdateLocations:(NSArray *)locations animated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
 {
     CLLocation *oldLocation = self.userLocation.location;
     CLLocation *newLocation = locations.lastObject;
@@ -5609,7 +5639,7 @@ public:
         }
     }
 
-    [self didUpdateLocationWithUserTrackingAnimated:animated];
+    [self didUpdateLocationWithUserTrackingAnimated:animated completionHandler:completion];
 
     NSTimeInterval duration = MGLAnimationDuration;
     if (oldLocation && ! CGPointEqualToPoint(self.userLocationAnnotationView.center, CGPointZero))
@@ -5626,13 +5656,17 @@ public:
     }
 }
 
-- (void)didUpdateLocationWithUserTrackingAnimated:(BOOL)animated
+- (void)didUpdateLocationWithUserTrackingAnimated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
 {
     CLLocation *location = self.userLocation.location;
     if ( ! _showsUserLocation || ! location
         || ! CLLocationCoordinate2DIsValid(location.coordinate)
         || self.userTrackingMode == MGLUserTrackingModeNone)
     {
+        if (completion)
+        {
+            completion();
+        }
         return;
     }
 
@@ -5643,6 +5677,10 @@ public:
     if (std::abs(currentPoint.x - correctPoint.x) <= 1.0 && std::abs(currentPoint.y - correctPoint.y) <= 1.0
         && self.userTrackingMode != MGLUserTrackingModeFollowWithCourse)
     {
+        if (completion)
+        {
+            completion();
+        }
         return;
     }
 
@@ -5652,25 +5690,25 @@ public:
         if (self.userTrackingState != MGLUserTrackingStateBegan)
         {
             // Keep both the user and the destination in view.
-            [self didUpdateLocationWithTargetAnimated:animated];
+            [self didUpdateLocationWithTargetAnimated:animated completionHandler:completion];
         }
     }
     else if (self.userTrackingState == MGLUserTrackingStatePossible)
     {
         // The first location update is often a great distance away from the
         // current viewport, so fly there to provide additional context.
-        [self didUpdateLocationSignificantlyAnimated:animated];
+        [self didUpdateLocationSignificantlyAnimated:animated completionHandler:completion];
     }
     else if (self.userTrackingState == MGLUserTrackingStateChanged)
     {
         // Subsequent updates get a more subtle animation.
-        [self didUpdateLocationIncrementallyAnimated:animated];
+        [self didUpdateLocationIncrementallyAnimated:animated completionHandler:completion];
     }
     [self unrotateIfNeededAnimated:YES];
 }
 
 /// Changes the viewport based on an incremental location update.
-- (void)didUpdateLocationIncrementallyAnimated:(BOOL)animated
+- (void)didUpdateLocationIncrementallyAnimated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
 {
     [self _setCenterCoordinate:self.userLocation.location.coordinate
                    edgePadding:self.edgePaddingForFollowing
@@ -5678,12 +5716,12 @@ public:
                      direction:self.directionByFollowingWithCourse
                       duration:animated ? MGLUserLocationAnimationDuration : 0
        animationTimingFunction:[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear]
-             completionHandler:nil];
+             completionHandler:completion];
 }
 
 /// Changes the viewport based on a significant location update, such as the
 /// first location update.
-- (void)didUpdateLocationSignificantlyAnimated:(BOOL)animated
+- (void)didUpdateLocationSignificantlyAnimated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
 {
     
     if (_distanceFromOldUserLocation >= MGLDistanceThresholdForCameraPause) {
@@ -5715,24 +5753,32 @@ public:
         {
             strongSelf.userTrackingState = MGLUserTrackingStateChanged;
         }
+        if (completion)
+        {
+            completion();
+        }
     }];
 }
 
 /// Changes the viewport based on a location update in the presence of a target
 /// coordinate that must also be displayed on the map concurrently.
-- (void)didUpdateLocationWithTargetAnimated:(BOOL)animated
+- (void)didUpdateLocationWithTargetAnimated:(BOOL)animated completionHandler:(nullable void (^)(void))completion
 {
     BOOL firstUpdate = self.userTrackingState == MGLUserTrackingStatePossible;
-    void (^completion)(void);
+    void (^animationCompletion)(void);
     if (animated && firstUpdate)
     {
         self.userTrackingState = MGLUserTrackingStateBegan;
         __weak MGLMapView *weakSelf = self;
-        completion = ^{
+        animationCompletion = ^{
             MGLMapView *strongSelf = weakSelf;
             if (strongSelf.userTrackingState == MGLUserTrackingStateBegan)
             {
                 strongSelf.userTrackingState = MGLUserTrackingStateChanged;
+            }
+            if (completion)
+            {
+                completion();
             }
         };
     }
@@ -5757,7 +5803,7 @@ public:
                        direction:self.directionByFollowingWithCourse
                         duration:animated ? MGLUserLocationAnimationDuration : 0
          animationTimingFunction:[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear]
-               completionHandler:completion];
+               completionHandler:animationCompletion];
 }
 
 /// Returns the edge padding to apply when moving the map to a tracked location.

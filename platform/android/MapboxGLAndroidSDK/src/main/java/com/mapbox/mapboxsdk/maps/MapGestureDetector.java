@@ -11,13 +11,15 @@ import android.support.annotation.Nullable;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
+
 import com.mapbox.android.gestures.AndroidGesturesManager;
 import com.mapbox.android.gestures.Constants;
+import com.mapbox.android.gestures.MoveGestureDetector;
+import com.mapbox.android.gestures.MultiFingerTapGestureDetector;
+import com.mapbox.android.gestures.RotateGestureDetector;
 import com.mapbox.android.gestures.ShoveGestureDetector;
 import com.mapbox.android.gestures.StandardGestureDetector;
-import com.mapbox.android.gestures.MultiFingerTapGestureDetector;
-import com.mapbox.android.gestures.MoveGestureDetector;
-import com.mapbox.android.gestures.RotateGestureDetector;
 import com.mapbox.android.gestures.StandardScaleGestureDetector;
 import com.mapbox.mapboxsdk.R;
 import com.mapbox.mapboxsdk.constants.MapboxConstants;
@@ -78,6 +80,7 @@ final class MapGestureDetector {
 
   private Animator scaleAnimator;
   private Animator rotateAnimator;
+  private Animator pitchAnimator;
   private final List<Animator> scheduledAnimators = new ArrayList<>();
 
   /**
@@ -226,6 +229,7 @@ final class MapGestureDetector {
 
     cancelAnimator(scaleAnimator);
     cancelAnimator(rotateAnimator);
+    cancelAnimator(pitchAnimator);
 
     dispatchCameraIdle();
   }
@@ -286,8 +290,15 @@ final class MapGestureDetector {
           // Get the vertical scroll amount, one click = 1
           float scrollDist = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
 
-          // Scale the map by the appropriate power of two factor
-          transform.zoomBy(scrollDist, new PointF(event.getX(), event.getY()));
+          // Check whether a keyboard shift key is held down while the scrolling is happening. If so,
+          // tilt the map to scroll. More info at
+          // https://developer.android.com/reference/android/view/KeyEvent.html#META_SHIFT_ON
+          if (event.getMetaState() == 1) {
+            transform.setTilt(transform.getTilt() - scrollDist);
+          } else {
+            // Scale the map by the appropriate power of two factor
+            transform.zoomBy(scrollDist, new PointF(event.getX(), event.getY()));
+          }
 
           return true;
 
@@ -776,6 +787,41 @@ final class MapGestureDetector {
     }
   }
 
+  private Animator createPitchAnimator(double currentPitch, double pitchAddition, long animationTime) {
+    ValueAnimator animator = ValueAnimator.ofFloat((float) currentPitch, (float) (currentPitch + pitchAddition));
+    animator.setDuration(animationTime);
+    animator.setInterpolator(new LinearInterpolator());
+    animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+
+      @Override
+      public void onAnimationUpdate(@NonNull ValueAnimator animation) {
+        Float floatValue = (Float) animation.getAnimatedValue();
+        transform.setTilt(floatValue.doubleValue());
+      }
+    });
+
+    animator.addListener(new AnimatorListenerAdapter() {
+
+      @Override
+      public void onAnimationStart(Animator animation) {
+        transform.cancelTransitions();
+        cameraChangeDispatcher.onCameraMoveStarted(REASON_API_ANIMATION);
+      }
+
+      @Override
+      public void onAnimationCancel(Animator animation) {
+        transform.cancelTransitions();
+      }
+
+      @Override
+      public void onAnimationEnd(Animator animation) {
+        dispatchCameraIdle();
+      }
+    });
+    return animator;
+  }
+
+
   private Animator createScaleAnimator(double currentZoom, double zoomAddition,
                                        @NonNull final PointF animationFocalPoint, long animationTime) {
     ValueAnimator animator = ValueAnimator.ofFloat((float) currentZoom, (float) (currentZoom + zoomAddition));
@@ -822,6 +868,26 @@ final class MapGestureDetector {
   }
 
   /**
+   * Adjust the map camera so that the map's plane is tilted up.
+   *
+   * @param runImmediately if true, animation will be started right away, otherwise it will wait until
+   *                       {@link MotionEvent#ACTION_UP} is registered.
+   */
+  void pitchCameraUpAnimated(boolean runImmediately) {
+    pitchAnimated(true, runImmediately);
+  }
+
+  /**
+   * Adjust the map camera so that the map's plane is tilted down.
+   *
+   * @param runImmediately if true, animation will be started right away, otherwise it will wait until
+   * {@link MotionEvent#ACTION_UP} is registered.
+   */
+  void pitchCameraDownAnimated(boolean runImmediately) {
+    pitchAnimated(false, runImmediately);
+  }
+
+  /**
    * Zoom out by 1.
    *
    * @param zoomFocalPoint focal point of zoom animation
@@ -846,6 +912,21 @@ final class MapGestureDetector {
       scaleAnimator.start();
     } else {
       scheduleAnimator(scaleAnimator);
+    }
+  }
+
+  private void pitchAnimated(boolean pitchUp, boolean runImmediately) {
+    //canceling here as well, because when using a button it will not be canceled automatically by onDown()
+    cancelAnimator(pitchAnimator);
+
+    pitchAnimator = createPitchAnimator(
+        transform.getTilt(),
+        pitchUp ? -5 : 5,
+        MapboxConstants.ANIMATION_DURATION);
+    if (runImmediately) {
+      pitchAnimator.start();
+    } else {
+      scheduleAnimator(pitchAnimator);
     }
   }
 

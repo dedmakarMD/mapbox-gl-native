@@ -8,8 +8,11 @@ import android.graphics.PointF;
 import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.util.Log;
 import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.LinearInterpolator;
 
@@ -23,6 +26,7 @@ import com.mapbox.android.gestures.StandardGestureDetector;
 import com.mapbox.android.gestures.StandardScaleGestureDetector;
 import com.mapbox.mapboxsdk.R;
 import com.mapbox.mapboxsdk.constants.MapboxConstants;
+import com.mapbox.mapboxsdk.log.Logger;
 import com.mapbox.mapboxsdk.utils.MathUtils;
 
 import java.util.ArrayList;
@@ -37,13 +41,14 @@ import static com.mapbox.mapboxsdk.maps.MapboxMap.OnCameraMoveStartedListener.RE
 /**
  * Manages gestures events on a MapView.
  */
-final class MapGestureDetector {
+final class MapGestureDetector implements View.OnKeyListener{
 
   private final Transform transform;
   private final Projection projection;
   private final UiSettings uiSettings;
   private final AnnotationManager annotationManager;
   private final CameraChangeDispatcher cameraChangeDispatcher;
+  private boolean isZHeldDown = false;
 
   // new map touch API
   private final CopyOnWriteArrayList<MapboxMap.OnMapClickListener> onMapClickListenerList
@@ -90,13 +95,14 @@ final class MapGestureDetector {
   @NonNull
   private Handler animationsTimeoutHandler = new Handler();
 
-  MapGestureDetector(@Nullable Context context, Transform transform, Projection projection, UiSettings uiSettings,
+  MapGestureDetector(@Nullable View view, @Nullable Context context, Transform transform, Projection projection, UiSettings uiSettings,
                      AnnotationManager annotationManager, CameraChangeDispatcher cameraChangeDispatcher) {
     this.annotationManager = annotationManager;
     this.transform = transform;
     this.projection = projection;
     this.uiSettings = uiSettings;
     this.cameraChangeDispatcher = cameraChangeDispatcher;
+    view.setOnKeyListener(this);
 
     // Checking for context != null for testing purposes
     if (context != null) {
@@ -107,6 +113,17 @@ final class MapGestureDetector {
       // Initialize gesture listeners
       initializeGestureListeners(context, true);
     }
+  }
+
+  @Override
+  public boolean onKey(View view, int i, KeyEvent keyEvent) {
+    Logger.d("MapGestureDetector", "onKey: ");
+    Logger.d("MapGestureDetector", "onKey: keyEvent.getKeyCode() = " + keyEvent.getKeyCode());
+
+    MapGestureDetector.this.isZHeldDown = keyEvent.getKeyCode() == keyEvent.KEYCODE_Z;
+    Logger.d("MapGestureDetector", "onKey: isZHeldDown = " + isZHeldDown);
+
+    return false;
   }
 
   private void initializeGestureListeners(@NonNull Context context, boolean attachDefaultListeners) {
@@ -290,15 +307,9 @@ final class MapGestureDetector {
           // Get the vertical scroll amount, one click = 1
           float scrollDist = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
 
-          // Check whether a keyboard shift key is held down while the scrolling is happening. If so,
-          // tilt the map to scroll. More info at
-          // https://developer.android.com/reference/android/view/KeyEvent.html#META_SHIFT_ON
-          if (event.getMetaState() == 1) {
-            transform.setTilt(transform.getTilt() - scrollDist);
-          } else {
-            // Scale the map by the appropriate power of two factor
-            transform.zoomBy(scrollDist, new PointF(event.getX(), event.getY()));
-          }
+          Logger.d("MapGestureDetector", "scrollDist = " + scrollDist);
+          // Scale the map by the appropriate power of two factor
+          transform.zoomBy(scrollDist, new PointF(event.getX(), event.getY()));
 
           return true;
 
@@ -445,7 +456,23 @@ final class MapGestureDetector {
         cameraChangeDispatcher.onCameraMoveStarted(CameraChangeDispatcher.REASON_API_GESTURE);
 
         // Scroll the map
-        transform.moveBy(-distanceX, -distanceY, 0 /*no duration*/);
+        if (isZHeldDown) {
+          PointF focalPoint = new PointF(uiSettings.getWidth() / 2, uiSettings.getHeight() / 2);
+          zoomInAnimated(focalPoint, true);
+          isZHeldDown = false;
+        } else {
+          transform.moveBy(-distanceX, -distanceY, 0 /*no duration*/);
+        }
+
+
+        if (detector.getLastDistanceX()(MotionEvent.AXIS_VSCROLL) < 0.0f) {
+
+          selectNext();
+        } else {
+          selectPrev();
+        }
+
+
 
         notifyOnMoveListeners(detector);
       }
